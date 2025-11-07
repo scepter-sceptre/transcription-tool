@@ -10,6 +10,7 @@ from src.core.queue_manager import QueueManager, QueueStatus
 from src.ui.settings_dialog import SettingsDialog
 from src.ui.model_dialog import ModelDialog
 from src.ui.vocabulary_editor import VocabularyEditor
+from src.ui.transcript_editor import TranscriptEditor
 import json
 
 class TranscribeWorker(QThread):
@@ -64,6 +65,7 @@ class MainWindow(QMainWindow):
         
         self.queue_manager = QueueManager()
         self.worker = None
+        self.completed_transcripts = {}
         
         self.settings = {
             "preset": "Balanced",
@@ -126,6 +128,7 @@ class MainWindow(QMainWindow):
         
         self.queue_list = QListWidget()
         self.queue_list.setMinimumWidth(400)
+        self.queue_list.itemDoubleClicked.connect(self.on_item_double_clicked)
         
         self.preview_area = QTextEdit()
         self.preview_area.setReadOnly(True)
@@ -176,11 +179,28 @@ class MainWindow(QMainWindow):
             self.process_button.setEnabled(True)
             
     def add_queue_item_to_list(self, item):
-        list_item = QListWidgetItem(f"{item.filename} - {item.status.value} ({item.preset}/{item.model})")
+        status_text = f"{item.filename} - {item.status.value}"
+        if item.status == QueueStatus.COMPLETE:
+            status_text += " [Double-click to edit]"
+        else:
+            status_text += f" ({item.preset}/{item.model})"
+        
+        list_item = QListWidgetItem(status_text)
         list_item.setData(Qt.ItemDataRole.UserRole, item.id)
         self.queue_list.addItem(list_item)
         
+    def on_item_double_clicked(self, list_item):
+        item_id = list_item.data(Qt.ItemDataRole.UserRole)
+        if item_id in self.completed_transcripts:
+            transcript = self.completed_transcripts[item_id]
+            editor = TranscriptEditor(transcript, self)
+            if editor.exec():
+                self.completed_transcripts[item_id] = editor.get_transcript()
+                
     def clear_completed(self):
+        for item in self.queue_manager.items[:]:
+            if item.status == QueueStatus.COMPLETE and item.id in self.completed_transcripts:
+                del self.completed_transcripts[item.id]
         self.queue_manager.clear_completed()
         self.refresh_queue_list()
         
@@ -226,6 +246,7 @@ class MainWindow(QMainWindow):
         
     def on_finished(self, item_id, transcript):
         self.queue_manager.update_status(item_id, QueueStatus.COMPLETE, 100)
+        self.completed_transcripts[item_id] = transcript
         self.refresh_queue_list()
         
         vocab_status = " (vocab applied)" if transcript['metadata']['vocabulary_applied'] else ""
@@ -234,6 +255,8 @@ class MainWindow(QMainWindow):
         for seg in transcript['segments'][:3]:
             self.preview_area.append(f"[{seg['start']:.1f}s] {seg['text']}")
             
+        self.preview_area.append("\nDouble-click item to edit transcript")
+        
         self.process_next_item()
         
     def on_error(self, item_id, error_msg):

@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from src.core.vocabulary_processor import VocabularyProcessor
+import numpy as np
 
 class Transcriber:
     def __init__(self, model_name: str = "large-v3", device: str = "cpu", compute_type: str = "int8"):
@@ -95,12 +96,19 @@ class Transcriber:
         
         segments = []
         for seg in result["segments"]:
+            words = seg.get("words", [])
+            if words:
+                scores = [float(w.get("score", 0.0)) for w in words if "score" in w]
+                avg_confidence = sum(scores) / len(scores) if scores else 0.0
+            else:
+                avg_confidence = 0.0
+            
             segments.append({
                 "start": seg["start"],
                 "end": seg["end"],
                 "text": seg["text"].strip(),
                 "speaker": seg.get("speaker", None),
-                "confidence": seg.get("score", 0.0)
+                "confidence": avg_confidence
             })
         
         if enable_vocabulary:
