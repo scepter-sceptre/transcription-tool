@@ -3,21 +3,28 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QPushButton, QHeaderView, QComboBox,
     QLineEdit, QLabel, QCheckBox, QSpinBox, QWidget
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtGui import QColor
 from typing import Dict, List, Optional
 import json
 
 class TranscriptEditor(QDialog):
-    def __init__(self, transcript: Dict, parent=None):
+    def __init__(self, transcript: Dict, audio_path: str, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Transcript Editor")
         self.setMinimumSize(1200, 700)
         
         self.transcript = transcript
+        self.audio_path = audio_path
         self.segments = transcript["segments"].copy()
         self.speakers = self.extract_speakers()
         self.modified = False
+        
+        self.player = QMediaPlayer()
+        self.audio_output = QAudioOutput()
+        self.player.setAudioOutput(self.audio_output)
+        self.player.setSource(QUrl.fromLocalFile(audio_path))
         
         self.setup_ui()
         self.load_segments()
@@ -83,6 +90,7 @@ class TranscriptEditor(QDialog):
             header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.cellClicked.connect(self.on_cell_clicked)
         layout.addWidget(self.table)
         
         button_bar = QHBoxLayout()
@@ -141,6 +149,11 @@ class TranscriptEditor(QDialog):
             action_layout = QHBoxLayout(action_widget)
             action_layout.setContentsMargins(4, 0, 4, 0)
             
+            play_btn = QPushButton("▶")
+            play_btn.setMaximumWidth(40)
+            play_btn.clicked.connect(lambda checked, r=row: self.play_segment(r))
+            action_layout.addWidget(play_btn)
+            
             delete_btn = QPushButton("Delete")
             delete_btn.clicked.connect(lambda checked, r=row: self.delete_segment(r))
             action_layout.addWidget(delete_btn)
@@ -148,6 +161,18 @@ class TranscriptEditor(QDialog):
             self.table.setCellWidget(row, 4, action_widget)
         
         self.table.itemChanged.connect(self.on_item_changed)
+        
+    def on_cell_clicked(self, row, column):
+        if column == 0:
+            self.play_segment(row)
+            
+    def play_segment(self, row):
+        seg = self.segments[row]
+        start_ms = int(seg["start"] * 1000)
+        end_ms = int(seg["end"] * 1000)
+        
+        self.player.setPosition(start_ms)
+        self.player.play()
         
     def apply_filters(self):
         show_low_confidence = self.confidence_check.isChecked()
@@ -221,6 +246,8 @@ class TranscriptEditor(QDialog):
             )
             if reply == QMessageBox.StandardButton.No:
                 return
+        
+        self.player.stop()
         self.accept()
         
     def get_transcript(self) -> Dict:

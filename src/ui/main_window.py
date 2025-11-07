@@ -193,9 +193,11 @@ class MainWindow(QMainWindow):
         item_id = list_item.data(Qt.ItemDataRole.UserRole)
         if item_id in self.completed_transcripts:
             transcript = self.completed_transcripts[item_id]
-            editor = TranscriptEditor(transcript, self)
-            if editor.exec():
-                self.completed_transcripts[item_id] = editor.get_transcript()
+            item = self.queue_manager.get_item(item_id)
+            if item:
+                editor = TranscriptEditor(transcript, item.file_path, self)
+                if editor.exec():
+                    self.completed_transcripts[item_id] = editor.get_transcript()
                 
     def clear_completed(self):
         for item in self.queue_manager.items[:]:
