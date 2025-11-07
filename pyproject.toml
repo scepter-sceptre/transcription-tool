@@ -1,0 +1,28 @@
+[project]
+name = "transcription-tool"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "scepter-sceptre",email = "wyatthassler@icloud.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "pyqt6 (>=6.10.0,<7.0.0)",
+    "torch (>=2.0,<2.9)",
+    "torchvision (>=0.15,<0.24)",
+    "torchaudio (>=2.0,<2.9)",
+    "whisperx (>=3.7.4,<4.0.0)",
+    "python-levenshtein (>=0.27.3,<0.28.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "black (>=25.9.0,<26.0.0)",
+    "pytest (>=8.4.2,<9.0.0)"
+]
