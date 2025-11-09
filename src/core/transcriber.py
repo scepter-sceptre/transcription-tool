@@ -5,7 +5,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from src.core.vocabulary_processor import VocabularyProcessor
-import numpy as np
+from src.utils.logger import get_logger
+import time
 
 class Transcriber:
     def __init__(self, model_name: str = "large-v3", device: str = "cpu", compute_type: str = "int8"):
@@ -18,6 +19,7 @@ class Transcriber:
         self.diarize_model = None
         self.beam_size = 5
         self.vocab_processor = VocabularyProcessor()
+        self.logger = get_logger()
         
     def load_model(self, beam_size: int = 5):
         if self.model is None:
@@ -66,79 +68,117 @@ class Transcriber:
         vocabulary_threshold: int = 2
     ) -> Dict[str, Any]:
         
-        self.load_model(beam_size)
-        assert self.model is not None
+        start_time = time.time()
         
-        audio = whisperx.load_audio(audio_path)
-        
-        result = self.model.transcribe(
-            audio,
-            batch_size=batch_size
-        )
-        
-        self.load_align_model()
-        assert self.align_model is not None
-        assert self.align_metadata is not None
-        result = whisperx.align(
-            result["segments"],
-            self.align_model,
-            self.align_metadata,
-            audio,
-            self.device,
-            return_char_alignments=False
-        )
-        
-        if enable_diarization and hf_token:
-            self.load_diarize_model(hf_token)
-            assert self.diarize_model is not None
-            diarize_segments = self.diarize_model(audio)
-            result = whisperx.assign_word_speakers(diarize_segments, result)
-        
-        segments = []
-        for seg in result["segments"]:
-            words = seg.get("words", [])
-            if words:
-                scores = [float(w.get("score", 0.0)) for w in words if "score" in w]
-                avg_confidence = sum(scores) / len(scores) if scores else 0.0
-            else:
-                avg_confidence = 0.0
+        try:
+            self.load_model(beam_size)
+            assert self.model is not None
             
-            segments.append({
-                "start": seg["start"],
-                "end": seg["end"],
-                "text": seg["text"].strip(),
-                "speaker": seg.get("speaker", None),
-                "confidence": avg_confidence
-            })
-        
-        if enable_vocabulary:
-            segments = self.vocab_processor.apply_vocabulary(
-                segments,
-                vocabulary_profile,
-                vocabulary_threshold
+            audio = whisperx.load_audio(audio_path)
+            
+            result = self.model.transcribe(
+                audio,
+                batch_size=batch_size
             )
-        
-        duration = len(audio) / 16000.0
-        
-        output = {
-            "metadata": {
-                "source_file": str(Path(audio_path).name),
-                "duration": duration,
+            
+            self.load_align_model()
+            assert self.align_model is not None
+            assert self.align_metadata is not None
+            result = whisperx.align(
+                result["segments"],
+                self.align_model,
+                self.align_metadata,
+                audio,
+                self.device,
+                return_char_alignments=False
+            )
+            
+            if enable_diarization and hf_token:
+                self.load_diarize_model(hf_token)
+                assert self.diarize_model is not None
+                diarize_segments = self.diarize_model(audio)
+                result = whisperx.assign_word_speakers(diarize_segments, result)
+            
+            segments = []
+            for seg in result["segments"]:
+                words = seg.get("words", [])
+                if words:
+                    scores = [float(w.get("score", 0.0)) for w in words if "score" in w]
+                    avg_confidence = sum(scores) / len(scores) if scores else 0.0
+                else:
+                    avg_confidence = 0.0
+                
+                segments.append({
+                    "start": seg["start"],
+                    "end": seg["end"],
+                    "text": seg["text"].strip(),
+                    "speaker": seg.get("speaker", None),
+                    "confidence": avg_confidence
+                })
+            
+            if enable_vocabulary:
+                segments = self.vocab_processor.apply_vocabulary(
+                    segments,
+                    vocabulary_profile,
+                    vocabulary_threshold
+                )
+            
+            duration = len(audio) / 16000.0
+            processing_time = time.time() - start_time
+            
+            self.logger.log_performance({
+                "file": str(Path(audio_path).name),
                 "model": self.model_name,
-                "diarization_enabled": enable_diarization,
-                "vocabulary_applied": enable_vocabulary,
-                "processing_preset": "custom",
-                "parameters": {
-                    "beam_size": self.beam_size,
-                    "compute_type": self.compute_type,
-                    "batch_size": batch_size
+                "audio_duration": duration,
+                "processing_time": processing_time,
+                "ratio": processing_time / duration if duration > 0 else 0,
+                "beam_size": beam_size,
+                "batch_size": batch_size,
+                "diarization": enable_diarization,
+                "vocabulary": enable_vocabulary,
+                "segments_count": len(segments)
+            })
+            
+            self.logger.log_session({
+                "file": str(Path(audio_path).name),
+                "model": self.model_name,
+                "duration": duration,
+                "segments": len(segments),
+                "diarization": enable_diarization,
+                "vocabulary_applied": enable_vocabulary
+            })
+            
+            output = {
+                "metadata": {
+                    "source_file": str(Path(audio_path).name),
+                    "duration": duration,
+                    "model": self.model_name,
+                    "diarization_enabled": enable_diarization,
+                    "vocabulary_applied": enable_vocabulary,
+                    "processing_preset": "custom",
+                    "parameters": {
+                        "beam_size": self.beam_size,
+                        "compute_type": self.compute_type,
+                        "batch_size": batch_size
+                    },
+                    "timestamp": datetime.utcnow().isoformat() + "Z"
                 },
-                "timestamp": datetime.utcnow().isoformat() + "Z"
-            },
-            "segments": segments
-        }
-        
-        return output
+                "segments": segments
+            }
+            
+            return output
+            
+        except Exception as e:
+            self.logger.log_error(
+                "TranscriptionError",
+                str(e),
+                {
+                    "file": str(Path(audio_path).name),
+                    "model": self.model_name,
+                    "beam_size": beam_size
+                }
+            )
+            raise
     
     def save_transcript(self, transcript: Dict[str, Any], output_path: str):
         with open(output_path, 'w', encoding='utf-8') as f:

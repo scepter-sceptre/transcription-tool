@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QPushButton, QHeaderView, QComboBox,
     QLineEdit, QLabel, QCheckBox, QSpinBox, QWidget
 )
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QUrl, QTimer
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtGui import QColor
 from typing import Dict, List, Optional
@@ -20,6 +20,7 @@ class TranscriptEditor(QDialog):
         self.segments = transcript["segments"].copy()
         self.speakers = self.extract_speakers()
         self.modified = False
+        self.current_segment_end = 0
         
         self.player = QMediaPlayer()
         self.audio_output = QAudioOutput()
@@ -137,11 +138,14 @@ class TranscriptEditor(QDialog):
             confidence_item.setFlags(confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             
             if confidence < 70:
-                confidence_item.setBackground(QColor(255, 200, 200))
+                confidence_item.setBackground(QColor(255, 230, 230))
+                confidence_item.setForeground(QColor(0, 0, 0))
             elif confidence < 85:
-                confidence_item.setBackground(QColor(255, 255, 200))
+                confidence_item.setBackground(QColor(255, 245, 200))
+                confidence_item.setForeground(QColor(0, 0, 0))
             else:
-                confidence_item.setBackground(QColor(200, 255, 200))
+                confidence_item.setBackground(QColor(230, 255, 230))
+                confidence_item.setForeground(QColor(0, 0, 0))
                 
             self.table.setItem(row, 3, confidence_item)
             
@@ -171,8 +175,18 @@ class TranscriptEditor(QDialog):
         start_ms = int(seg["start"] * 1000)
         end_ms = int(seg["end"] * 1000)
         
+        self.current_segment_end = end_ms
         self.player.setPosition(start_ms)
         self.player.play()
+        
+        if hasattr(self, 'stop_timer'):
+            self.stop_timer.stop()
+        
+        duration_ms = end_ms - start_ms
+        self.stop_timer = QTimer()
+        self.stop_timer.setSingleShot(True)
+        self.stop_timer.timeout.connect(self.player.stop)
+        self.stop_timer.start(duration_ms)
         
     def apply_filters(self):
         show_low_confidence = self.confidence_check.isChecked()

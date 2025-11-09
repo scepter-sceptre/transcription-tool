@@ -11,6 +11,7 @@ from src.ui.settings_dialog import SettingsDialog
 from src.ui.model_dialog import ModelDialog
 from src.ui.vocabulary_editor import VocabularyEditor
 from src.ui.transcript_editor import TranscriptEditor
+from src.ui.stats_dialog import StatsDialog
 import json
 
 class TranscribeWorker(QThread):
@@ -102,6 +103,9 @@ class MainWindow(QMainWindow):
         self.models_button = QPushButton("Models")
         self.models_button.clicked.connect(self.open_models)
         
+        self.stats_button = QPushButton("Stats")
+        self.stats_button.clicked.connect(self.open_stats)
+        
         self.settings_button = QPushButton("⚙")
         self.settings_button.setMaximumWidth(40)
         self.settings_button.clicked.connect(self.open_settings)
@@ -118,6 +122,7 @@ class MainWindow(QMainWindow):
         top_bar.addWidget(self.model_label)
         top_bar.addWidget(self.vocabulary_button)
         top_bar.addWidget(self.models_button)
+        top_bar.addWidget(self.stats_button)
         top_bar.addWidget(self.settings_button)
         top_bar.addStretch()
         top_bar.addWidget(self.add_files_button)
@@ -148,6 +153,10 @@ class MainWindow(QMainWindow):
         
     def open_models(self):
         dialog = ModelDialog(self)
+        dialog.exec()
+        
+    def open_stats(self):
+        dialog = StatsDialog(self)
         dialog.exec()
         
     def open_settings(self):
@@ -198,7 +207,7 @@ class MainWindow(QMainWindow):
                 editor = TranscriptEditor(transcript, item.file_path, self)
                 if editor.exec():
                     self.completed_transcripts[item_id] = editor.get_transcript()
-                
+        
     def clear_completed(self):
         for item in self.queue_manager.items[:]:
             if item.status == QueueStatus.COMPLETE and item.id in self.completed_transcripts:
