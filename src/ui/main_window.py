@@ -12,6 +12,7 @@ from src.ui.model_dialog import ModelDialog
 from src.ui.vocabulary_editor import VocabularyEditor
 from src.ui.transcript_editor import TranscriptEditor
 from src.ui.stats_dialog import StatsDialog
+from src.ui.speaker_dialog import SpeakerDialog
 import json
 
 class TranscribeWorker(QThread):
@@ -100,6 +101,9 @@ class MainWindow(QMainWindow):
         self.vocabulary_button = QPushButton("Vocabulary")
         self.vocabulary_button.clicked.connect(self.open_vocabulary)
         
+        self.speakers_button = QPushButton("Speakers")
+        self.speakers_button.clicked.connect(self.open_speakers)
+        
         self.models_button = QPushButton("Models")
         self.models_button.clicked.connect(self.open_models)
         
@@ -121,6 +125,7 @@ class MainWindow(QMainWindow):
         top_bar.addWidget(self.preset_label)
         top_bar.addWidget(self.model_label)
         top_bar.addWidget(self.vocabulary_button)
+        top_bar.addWidget(self.speakers_button)
         top_bar.addWidget(self.models_button)
         top_bar.addWidget(self.stats_button)
         top_bar.addWidget(self.settings_button)
@@ -149,6 +154,11 @@ class MainWindow(QMainWindow):
         
     def open_vocabulary(self):
         dialog = VocabularyEditor(self)
+        dialog.exec()
+        
+    def open_speakers(self):
+        hf_token = self.settings.get("hf_token", "")
+        dialog = SpeakerDialog(hf_token, self)
         dialog.exec()
         
     def open_models(self):
