@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 from src.core.vocabulary_processor import VocabularyProcessor
 from src.utils.logger import get_logger
+from src.utils.preprocessing import extract_audio_if_video
 import time
 
 class Transcriber:
@@ -69,12 +70,15 @@ class Transcriber:
     ) -> Dict[str, Any]:
         
         start_time = time.time()
+        temp_file = None
         
         try:
+            processed_path, temp_file = extract_audio_if_video(audio_path)
+            
             self.load_model(beam_size)
             assert self.model is not None
             
-            audio = whisperx.load_audio(audio_path)
+            audio = whisperx.load_audio(processed_path)
             
             result = self.model.transcribe(
                 audio,
@@ -179,6 +183,9 @@ class Transcriber:
                 }
             )
             raise
+        finally:
+            if temp_file and Path(temp_file).exists():
+                Path(temp_file).unlink()
     
     def save_transcript(self, transcript: Dict[str, Any], output_path: str):
         with open(output_path, 'w', encoding='utf-8') as f:
