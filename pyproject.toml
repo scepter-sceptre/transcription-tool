@@ -1,3 +1,6 @@
+[tool.poetry]
+package-mode = false
+
 [project]
 name = "transcription-tool"
 version = "0.1.0"
@@ -13,7 +16,8 @@ dependencies = [
     "torchvision (>=0.15,<0.24)",
     "torchaudio (>=2.0,<2.9)",
     "whisperx (>=3.7.4,<4.0.0)",
-    "python-levenshtein (>=0.27.3,<0.28.0)"
+    "python-levenshtein (>=0.27.3,<0.28.0)",
+    "yt-dlp (>=2025.10.22,<2026.0.0)"
 ]
 
 

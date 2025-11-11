@@ -20,12 +20,13 @@ class TranscriptEditor(QDialog):
         self.segments = transcript["segments"].copy()
         self.speakers = self.extract_speakers()
         self.modified = False
-        self.current_segment_end = 0
+        self.current_segment_end = None
         
         self.player = QMediaPlayer()
         self.audio_output = QAudioOutput()
         self.player.setAudioOutput(self.audio_output)
         self.player.setSource(QUrl.fromLocalFile(audio_path))
+        self.player.positionChanged.connect(self.on_position_changed)
         
         self.setup_ui()
         self.load_segments()
@@ -179,14 +180,10 @@ class TranscriptEditor(QDialog):
         self.player.setPosition(start_ms)
         self.player.play()
         
-        if hasattr(self, 'stop_timer'):
-            self.stop_timer.stop()
-        
-        duration_ms = end_ms - start_ms
-        self.stop_timer = QTimer()
-        self.stop_timer.setSingleShot(True)
-        self.stop_timer.timeout.connect(self.player.stop)
-        self.stop_timer.start(duration_ms)
+    def on_position_changed(self, position):
+        if self.current_segment_end is not None and position >= self.current_segment_end:
+            self.player.pause()
+            self.current_segment_end = None
         
     def apply_filters(self):
         show_low_confidence = self.confidence_check.isChecked()

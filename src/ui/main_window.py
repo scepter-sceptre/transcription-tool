@@ -14,6 +14,7 @@ from src.ui.vocabulary_editor import VocabularyEditor
 from src.ui.transcript_editor import TranscriptEditor
 from src.ui.stats_dialog import StatsDialog
 from src.ui.speaker_dialog import SpeakerDialog
+from src.ui.download_dialog import DownloadDialog
 from src.utils.config import ConfigManager
 import json
 
@@ -129,6 +130,10 @@ class MainWindow(QMainWindow):
         
         self.add_files_button = QPushButton("+ Add Files")
         self.add_files_button.clicked.connect(self.add_files)
+        
+        self.download_button = QPushButton("Download URL")
+        self.download_button.clicked.connect(self.download_from_url)
+        
         self.clear_button = QPushButton("Clear Done")
         self.clear_button.clicked.connect(self.clear_completed)
         self.process_button = QPushButton("Start Processing")
@@ -144,6 +149,7 @@ class MainWindow(QMainWindow):
         top_bar.addWidget(self.settings_button)
         top_bar.addStretch()
         top_bar.addWidget(self.add_files_button)
+        top_bar.addWidget(self.download_button)
         top_bar.addWidget(self.clear_button)
         top_bar.addWidget(self.process_button)
         
@@ -295,6 +301,20 @@ class MainWindow(QMainWindow):
             self.preset_label.setText(f"Preset: {self.settings['preset']}")
             self.model_label.setText(f"Model: {self.settings['model']}")
             self.save_settings()
+            
+    def download_from_url(self):
+        dialog = DownloadDialog(self)
+        if dialog.exec():
+            output_file = dialog.get_output_file()
+            if output_file and Path(output_file).exists():
+                item = self.queue_manager.add_item(
+                    output_file,
+                    preset=self.settings["preset"],
+                    model=self.settings["model"]
+                )
+                self.add_queue_item_to_list(item)
+                if self.queue_manager.items:
+                    self.process_button.setEnabled(True)
             
     def add_files(self):
         file_paths, _ = QFileDialog.getOpenFileNames(
