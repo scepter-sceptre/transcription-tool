@@ -1,9 +1,10 @@
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QTextEdit, QFileDialog, QLabel, QListWidget,
-    QListWidgetItem, QSplitter
+    QListWidgetItem, QSplitter, QMenu
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QAction
 from pathlib import Path
 from src.core.transcriber import Transcriber
 from src.core.queue_manager import QueueManager, QueueStatus
@@ -13,6 +14,7 @@ from src.ui.vocabulary_editor import VocabularyEditor
 from src.ui.transcript_editor import TranscriptEditor
 from src.ui.stats_dialog import StatsDialog
 from src.ui.speaker_dialog import SpeakerDialog
+from src.utils.config import ConfigManager
 import json
 
 class TranscribeWorker(QThread):
@@ -68,6 +70,7 @@ class MainWindow(QMainWindow):
         self.queue_manager = QueueManager()
         self.worker = None
         self.completed_transcripts = {}
+        self.config_manager = ConfigManager()
         
         self.settings = {
             "preset": "Balanced",
@@ -85,7 +88,17 @@ class MainWindow(QMainWindow):
             "vocabulary_threshold": 2
         }
         
+        self.load_settings()
         self.setup_ui()
+        self.setup_menu()
+        
+    def load_settings(self):
+        saved_settings = self.config_manager.load_settings()
+        if saved_settings:
+            self.settings.update(saved_settings)
+        
+    def save_settings(self):
+        self.config_manager.save_settings(self.settings)
         
     def setup_ui(self):
         central_widget = QWidget()
@@ -152,6 +165,110 @@ class MainWindow(QMainWindow):
         layout.addLayout(top_bar)
         layout.addWidget(splitter)
         
+    def setup_menu(self):
+        menubar = self.menuBar()
+        if not menubar:
+            return
+        
+        file_menu = menubar.addMenu("File")
+        if not file_menu:
+            return
+        
+        open_action = QAction("Open Transcript...", self)
+        open_action.setShortcut("Ctrl+O")
+        open_action.triggered.connect(self.open_transcript)
+        file_menu.addAction(open_action)
+        
+        file_menu.addSeparator()
+        
+        recent_menu = file_menu.addMenu("Open Recent")
+        if not recent_menu:
+            return
+        self.recent_menu = recent_menu
+        self.update_recent_menu()
+        
+        clear_recent_action = QAction("Clear Recent Files", self)
+        clear_recent_action.triggered.connect(self.clear_recent_files)
+        file_menu.addAction(clear_recent_action)
+        
+    def update_recent_menu(self):
+        if not self.recent_menu:
+            return
+            
+        self.recent_menu.clear()
+        recent_files = self.config_manager.get_recent_files()
+        
+        if not recent_files:
+            no_recent = QAction("No Recent Files", self)
+            no_recent.setEnabled(False)
+            self.recent_menu.addAction(no_recent)
+            return
+            
+        for recent in recent_files:
+            action = QAction(recent["filename"], self)
+            action.triggered.connect(lambda checked, r=recent: self.open_recent_transcript(r))
+            self.recent_menu.addAction(action)
+            
+    def open_transcript(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Transcript",
+            self.settings["output_dir"],
+            "JSON Files (*.json)"
+        )
+        
+        if not file_path:
+            return
+            
+        try:
+            with open(file_path, 'r') as f:
+                transcript = json.load(f)
+                
+            audio_file = transcript["metadata"]["source_file"]
+            
+            audio_path, _ = QFileDialog.getOpenFileName(
+                self,
+                f"Select Audio File: {audio_file}",
+                "",
+                "Media Files (*.mp3 *.wav *.m4a *.mp4 *.mov *.avi *.mkv)"
+            )
+            
+            if audio_path:
+                editor = TranscriptEditor(transcript, audio_path, self)
+                if editor.exec():
+                    pass
+                    
+                self.config_manager.add_recent_file(audio_path, file_path)
+                self.update_recent_menu()
+                
+        except Exception as e:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Error", f"Failed to open transcript:\n{e}")
+            
+    def open_recent_transcript(self, recent: dict):
+        try:
+            with open(recent["transcript_path"], 'r') as f:
+                transcript = json.load(f)
+                
+            if Path(recent["audio_path"]).exists():
+                editor = TranscriptEditor(transcript, recent["audio_path"], self)
+                editor.exec()
+            else:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self,
+                    "Audio File Not Found",
+                    f"Audio file not found:\n{recent['audio_path']}\n\nPlease locate it manually."
+                )
+                self.open_transcript()
+        except Exception as e:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "Error", f"Failed to open transcript:\n{e}")
+            
+    def clear_recent_files(self):
+        self.config_manager.clear_recent_files()
+        self.update_recent_menu()
+        
     def open_vocabulary(self):
         dialog = VocabularyEditor(self)
         dialog.exec()
@@ -177,6 +294,7 @@ class MainWindow(QMainWindow):
             self.settings = dialog.get_settings()
             self.preset_label.setText(f"Preset: {self.settings['preset']}")
             self.model_label.setText(f"Model: {self.settings['model']}")
+            self.save_settings()
             
     def add_files(self):
         file_paths, _ = QFileDialog.getOpenFileNames(
@@ -268,6 +386,13 @@ class MainWindow(QMainWindow):
     def on_finished(self, item_id, transcript):
         self.queue_manager.update_status(item_id, QueueStatus.COMPLETE, 100)
         self.completed_transcripts[item_id] = transcript
+        
+        item = self.queue_manager.get_item(item_id)
+        if item:
+            output_path = f"{self.settings['output_dir']}/{Path(item.file_path).stem}_transcript.json"
+            self.config_manager.add_recent_file(item.file_path, output_path)
+            self.update_recent_menu()
+        
         self.refresh_queue_list()
         
         vocab_status = " (vocab applied)" if transcript['metadata']['vocabulary_applied'] else ""
